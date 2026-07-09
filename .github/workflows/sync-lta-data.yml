@@ -1,0 +1,38 @@
+name: Sync LTA Datamall data
+
+on:
+  schedule:
+    # 03:00 UTC on the 2nd of every month — a day after LTA's typical
+    # month-start publish, so the new month's data is usually already live.
+    - cron: "0 3 2 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Sync data from LTA Datamall
+        run: npm run sync:lta-data
+
+      - name: Commit changes if any
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- src/data/coe-live.ts src/data/vehicle-population-live.ts; then
+            echo "No data changes — skipping commit."
+          else
+            git add src/data/coe-live.ts src/data/vehicle-population-live.ts
+            git commit -m "chore: sync LTA Datamall data ($(date -u +%Y-%m-%d))"
+            git push
+          fi
