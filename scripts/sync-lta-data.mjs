@@ -75,6 +75,7 @@ console.log("\nAll sources synced successfully.");
 async function downloadAndExtractCsv(url, label) {
   const res = await fetch(url, {
     headers: { "User-Agent": "coe-insights-sync/1.0 (+github actions monthly sync)" },
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
     throw new Error(`Download failed: ${res.status} ${res.statusText} — ${url}`);
