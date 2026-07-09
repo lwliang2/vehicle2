@@ -63,32 +63,59 @@ ride-hail dynamics, EV incentives, etc. For each hypothesis:
 
 No preamble. Be specific with numbers and years.`;
 
-    const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              { text: "You are a precise data analyst. Be specific with numbers and years." },
-            ],
-          },
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-        }),
-      },
-    );
+    const models = (
+      process.env.GEMINI_MODEL ?? "gemini-2.5-flash,gemini-2.0-flash,gemini-2.5-flash-lite"
+    )
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean);
 
-    if (!res.ok) {
+    const callGemini = async (model: string) => {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                { text: "You are a precise data analyst. Be specific with numbers and years." },
+              ],
+            },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+          }),
+        },
+      );
+      return res;
+    };
+
+    let res: Response | undefined;
+    let lastError: Error | undefined;
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i];
+      res = await callGemini(model);
+      if (res.ok) break;
+
+      // Model overloaded — try the next fallback model rather than failing outright.
+      if (res.status === 503 && i < models.length - 1) {
+        lastError = new Error(`${model} unavailable (503), trying fallback model`);
+        continue;
+      }
+
       const body = await res.text().catch(() => "");
       if (res.status === 429) throw new Error("Rate limit reached. Try again shortly.");
       if (res.status === 403) throw new Error("Gemini API key invalid or missing permissions.");
+      if (res.status === 503)
+        throw new Error("All Gemini models are currently overloaded. Please try again shortly.");
       throw new Error(`AI request failed (${res.status}): ${body.slice(0, 200)}`);
     }
+    if (!res || !res.ok) {
+      throw lastError ?? new Error("AI request failed for an unknown reason.");
+    }
+
     const json = (await res.json()) as {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
