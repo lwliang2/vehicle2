@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+import { LIVE_COE_CSV_TEXT, LIVE_COE_UPDATED_AT } from "@/data/coe-live";
+import { parseCoeCsv } from "@/features/coe/csv";
 
 export interface CoeRecord {
   month: string;
@@ -26,45 +28,63 @@ function toNumber(value: string | number | undefined | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+async function fetchFromDataGovSg(): Promise<{ records: CoeRecord[]; source: string }> {
+  const resourceId = process.env.COE_RESOURCE_ID ?? DEFAULT_RESOURCE_ID;
+  const base = "https://data.gov.sg/api/action/datastore_search";
+  const limit = 5000;
+  let offset = 0;
+  const all: Array<Record<string, string | number>> = [];
+
+  while (true) {
+    const url = `${base}?resource_id=${resourceId}&limit=${limit}&offset=${offset}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`data.gov.sg responded ${res.status}`);
+    }
+    const json = (await res.json()) as DatastoreResponse;
+    if (!json.success || !json.result) {
+      throw new Error("data.gov.sg returned an unexpected payload");
+    }
+    const batch = json.result.records;
+    all.push(...batch);
+    if (batch.length < limit || all.length >= json.result.total) break;
+    offset += limit;
+    if (offset > 50000) break;
+  }
+
+  const records: CoeRecord[] = all.map((raw) => ({
+    month: String(raw.month ?? ""),
+    bidding_no: toNumber(raw.bidding_no),
+    vehicle_class: String(raw.vehicle_class ?? ""),
+    quota: toNumber(raw.quota),
+    bids_success: toNumber(raw.bids_success),
+    bids_received: toNumber(raw.bids_received),
+    premium: toNumber(raw.premium ?? raw.premium_ ?? raw.premium_amt),
+  }));
+
+  return { records, source: `data.gov.sg resource ${resourceId}` };
+}
+
 export const fetchCoeResults = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ records: CoeRecord[]; source: string; fetchedAt: string }> => {
-    const resourceId = process.env.COE_RESOURCE_ID ?? DEFAULT_RESOURCE_ID;
-    const base = "https://data.gov.sg/api/action/datastore_search";
-    const limit = 5000;
-    let offset = 0;
-    const all: Array<Record<string, string | number>> = [];
-
-    while (true) {
-      const url = `${base}?resource_id=${resourceId}&limit=${limit}&offset=${offset}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`data.gov.sg responded ${res.status}`);
+    // Primary source: the monthly-synced LTA Datamall CSV, committed into the
+    // repo by .github/workflows/sync-lta-data.yml and parsed here with the
+    // same parser used for manual "Upload CSV" overrides.
+    if (LIVE_COE_CSV_TEXT) {
+      const { records, errors } = parseCoeCsv(LIVE_COE_CSV_TEXT);
+      if (records.length > 0) {
+        return {
+          records,
+          source: "LTA Datamall — COE Bidding Results (monthly auto-sync)",
+          fetchedAt: LIVE_COE_UPDATED_AT ?? new Date().toISOString(),
+        };
       }
-      const json = (await res.json()) as DatastoreResponse;
-      if (!json.success || !json.result) {
-        throw new Error("data.gov.sg returned an unexpected payload");
-      }
-      const batch = json.result.records;
-      all.push(...batch);
-      if (batch.length < limit || all.length >= json.result.total) break;
-      offset += limit;
-      if (offset > 50000) break;
+      console.error("LIVE_COE_CSV_TEXT failed to parse, falling back to data.gov.sg:", errors);
     }
 
-    const records: CoeRecord[] = all.map((raw) => ({
-      month: String(raw.month ?? ""),
-      bidding_no: toNumber(raw.bidding_no),
-      vehicle_class: String(raw.vehicle_class ?? ""),
-      quota: toNumber(raw.quota),
-      bids_success: toNumber(raw.bids_success),
-      bids_received: toNumber(raw.bids_received),
-      premium: toNumber(raw.premium ?? raw.premium_ ?? raw.premium_amt),
-    }));
-
-    return {
-      records,
-      source: `data.gov.sg resource ${resourceId}`,
-      fetchedAt: new Date().toISOString(),
-    };
+    // Fallback: live fetch from data.gov.sg — used before the first sync
+    // run, or if the synced CSV fails to parse (e.g. LTA changed the format).
+    const { records, source } = await fetchFromDataGovSg();
+    return { records, source, fetchedAt: new Date().toISOString() };
   },
 );

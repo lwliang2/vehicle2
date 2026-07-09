@@ -2,6 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardTabs } from "@/components/DashboardTabs";
 import { DEFAULT_VEHICLE_POPULATION_CSV } from "@/data/vehicle-population-csv";
+import {
+  LIVE_VEHICLE_POPULATION_CSV,
+  LIVE_VEHICLE_POPULATION_UPDATED_AT,
+} from "@/data/vehicle-population-live";
 
 import { parseCsv, type YearRow } from "@/features/vehicle-population/csv";
 import { GROUPS, ALL_SUB_KEYS, subColor } from "@/features/vehicle-population/taxonomy";
@@ -31,10 +35,33 @@ export const Route = createFileRoute("/vehicle-population")({
 });
 
 const STORAGE_KEY = "vehicle-population-csv-v2";
-const DEFAULT_ROWS: YearRow[] = parseCsv(DEFAULT_VEHICLE_POPULATION_CSV).rows;
+
+// Primary source: the monthly-synced LTA Datamall CSV, committed by
+// .github/workflows/sync-lta-data.yml. Falls back to the embedded snapshot
+// until the first sync run (or if it ever produces an unparseable file).
+const { rows: DEFAULT_ROWS, dataSource } = (() => {
+  if (LIVE_VEHICLE_POPULATION_CSV) {
+    const parsed = parseCsv(LIVE_VEHICLE_POPULATION_CSV);
+    if (parsed.rows.length > 0) {
+      return {
+        rows: parsed.rows,
+        dataSource: {
+          label: "LTA Datamall (monthly auto-sync)",
+          updatedAt: LIVE_VEHICLE_POPULATION_UPDATED_AT,
+        },
+      };
+    }
+    console.error("LIVE_VEHICLE_POPULATION_CSV failed to parse, falling back to embedded snapshot");
+  }
+  return {
+    rows: parseCsv(DEFAULT_VEHICLE_POPULATION_CSV).rows,
+    dataSource: { label: "embedded snapshot", updatedAt: null as string | null },
+  };
+})();
 
 function VehiclePopulationPage() {
   const [rows, setRows] = useState<YearRow[]>(DEFAULT_ROWS);
+  const [isCustomData, setIsCustomData] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -43,7 +70,10 @@ function VehiclePopulationPage() {
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved) as YearRow[];
-      if (Array.isArray(parsed) && parsed.length > 0) setRows(parsed);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setRows(parsed);
+        setIsCustomData(true);
+      }
     } catch {
       // ignore
     }
@@ -161,6 +191,7 @@ function VehiclePopulationPage() {
       return res.errors[0] ?? "No rows parsed";
     }
     setRows(res.rows);
+    setIsCustomData(true);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(res.rows));
     }
@@ -172,8 +203,9 @@ function VehiclePopulationPage() {
 
   const clearData = useCallback((): string => {
     setRows(DEFAULT_ROWS);
+    setIsCustomData(false);
     if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
-    return "Reverted to embedded LTA dataset";
+    return `Reverted to default dataset (${dataSource.label})`;
   }, []);
 
   const toggleGroup = useCallback(
@@ -212,6 +244,14 @@ function VehiclePopulationPage() {
         <p className="mt-0.5 text-xs text-muted-foreground">
           Toggle categories, expand sub-categories, and filter by year range to explore Singapore's
           motor-vehicle population.
+        </p>
+        <p className="mt-1 text-[0.7rem] text-muted-foreground">
+          Data:{" "}
+          {isCustomData
+            ? "local upload (custom CSV)"
+            : dataSource.updatedAt
+              ? `${dataSource.label} · synced ${new Date(dataSource.updatedAt).toLocaleDateString("en-SG")}`
+              : dataSource.label}
         </p>
       </header>
 
