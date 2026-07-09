@@ -12,7 +12,7 @@ interface Props {
   onToggleGroup: (key: string) => void;
   onToggleSub: (key: string) => void;
   onToggleOpen: (key: string) => void;
-  onSetAllGroups: (v: boolean) => void;
+  onSetGroupSubs: (groupKey: string, v: boolean) => void;
   onExpandAll: (v: boolean) => void;
   onShowTotalChange: (v: boolean) => void;
   onShowCapChange: (v: boolean) => void;
@@ -36,7 +36,7 @@ export const Sidebar = memo(function Sidebar({
   onToggleGroup,
   onToggleSub,
   onToggleOpen,
-  onSetAllGroups,
+  onSetGroupSubs,
   onExpandAll,
   onShowTotalChange,
   onShowCapChange,
@@ -58,20 +58,6 @@ export const Sidebar = memo(function Sidebar({
             Categories
           </h2>
           <div className="flex gap-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => onSetAllGroups(true)}
-              className="text-primary hover:underline"
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => onSetAllGroups(false)}
-              className="text-primary hover:underline"
-            >
-              None
-            </button>
             <button
               type="button"
               onClick={() => onExpandAll(true)}
@@ -106,13 +92,31 @@ export const Sidebar = memo(function Sidebar({
                   <span>{g.label}</span>
                 </label>
                 {g.subs.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => onToggleOpen(g.key)}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    {openGroups[g.key] ? "−" : "+"}
-                  </button>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => onSetGroupSubs(g.key, true)}
+                      className="text-primary hover:underline"
+                      title={`Select all ${g.label} sub-categories`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSetGroupSubs(g.key, false)}
+                      className="text-primary hover:underline"
+                      title={`Clear ${g.label} sub-category selection`}
+                    >
+                      None
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onToggleOpen(g.key)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {openGroups[g.key] ? "−" : "+"}
+                    </button>
+                  </div>
                 )}
               </div>
               {openGroups[g.key] && g.subs.length > 1 && (

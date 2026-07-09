@@ -188,10 +188,15 @@ function VehiclePopulationPage() {
     (key: string): void => setOpenGroups((o) => ({ ...o, [key]: !o[key] })),
     [],
   );
-  const setAllGroups = useCallback(
-    (v: boolean): void => setEnabledGroups(Object.fromEntries(GROUPS.map((g) => [g.key, v]))),
-    [],
-  );
+  const setGroupSubs = useCallback((groupKey: string, v: boolean): void => {
+    const group = GROUPS.find((g) => g.key === groupKey);
+    if (!group) return;
+    setEnabledSubs((s) => ({
+      ...s,
+      ...Object.fromEntries(group.subs.map((sub) => [sub.key, v])),
+    }));
+    setOpenGroups((o) => ({ ...o, [groupKey]: true }));
+  }, []);
   const expandAll = useCallback(
     (v: boolean): void => setOpenGroups(Object.fromEntries(GROUPS.map((g) => [g.key, v]))),
     [],
@@ -220,7 +225,7 @@ function VehiclePopulationPage() {
           onToggleGroup={toggleGroup}
           onToggleSub={toggleSub}
           onToggleOpen={toggleOpen}
-          onSetAllGroups={setAllGroups}
+          onSetGroupSubs={setGroupSubs}
           onExpandAll={expandAll}
           onShowTotalChange={setShowTotal}
           onShowCapChange={setShowCap}
