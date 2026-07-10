@@ -131,59 +131,74 @@ function VehiclePopulationPage() {
     return out;
   }, [enabledGroups, enabledSubs, showTotal, showCap]);
 
-  const chartData = useMemo(() => {
-    // Build LTA allowable cap from 1990 baseline using stepped growth rates:
-    // 3% pre-2009, 1.5% 2009-2011, 0.5% 2012-2014, 0.25% 2015-2017, 0% from 2018.
-    const capByYear = new Map<number, number>();
+  // Build LTA allowable cap from 1990 baseline using stepped growth rates:
+  // 3% pre-2009, 1.5% 2009-2011, 0.5% 2012-2014, 0.25% 2015-2017, 0% from 2018.
+  // Shared by the chart line and the growth table row so they agree.
+  const capByYear = useMemo(() => {
+    const map = new Map<number, number>();
     const baseline = rows.find((r) => r.year === 1990);
     if (baseline) {
       let cur = GROUPS.reduce((acc, g) => acc + (baseline.values[g.key] ?? 0), 0);
       const endYear = Math.max(hi, 2025);
       for (let y = 1990; y <= endYear; y++) {
-        capByYear.set(y, Math.round(cur));
+        map.set(y, Math.round(cur));
         const rate = y < 2009 ? 0.03 : y < 2012 ? 0.015 : y < 2015 ? 0.005 : y < 2018 ? 0.0025 : 0;
         cur *= 1 + rate;
       }
     }
+    return map;
+  }, [rows, hi]);
+
+  const chartData = useMemo(() => {
+    // Total reflects only the currently-active (toggled-on) series — matches
+    // what's actually visible in the chart rather than every category.
+    const activeKeys = activeSeries
+      .map((s) => s.key)
+      .filter((k) => k !== "__TOTAL__" && k !== "__CAP__");
     return filtered.map((r) => {
       const point: Record<string, number | string> = { year: r.year };
-      let total = 0;
       for (const g of GROUPS) {
-        const gVal = r.values[g.key] ?? 0;
-        total += gVal;
-        point[g.key] = gVal;
+        point[g.key] = r.values[g.key] ?? 0;
         for (const s of g.subs) {
           if (r.values[s.key] != null) point[s.key] = r.values[s.key];
         }
       }
+      const total = activeKeys.reduce((acc, key) => acc + ((point[key] as number) ?? 0), 0);
       point["__TOTAL__"] = total;
       const cap = capByYear.get(r.year);
       if (cap != null) point["__CAP__"] = cap;
       return point;
     });
-  }, [filtered, rows, hi]);
+  }, [filtered, activeSeries, capByYear]);
 
   const growthRows: GrowthRow[] = useMemo(() => {
     if (filtered.length < 2) return [];
     const first = filtered[0];
     const last = filtered[filtered.length - 1];
     const years = last.year - first.year;
-    return activeSeries
-      .filter((s) => s.key !== "__CAP__")
-      .map((s) => {
-        const a =
-          s.key === "__TOTAL__"
-            ? GROUPS.reduce((acc, g) => acc + (first.values[g.key] ?? 0), 0)
+    const activeKeys = activeSeries
+      .map((s) => s.key)
+      .filter((k) => k !== "__TOTAL__" && k !== "__CAP__");
+    const sumActive = (row: (typeof filtered)[number]) =>
+      activeKeys.reduce((acc, key) => acc + (row.values[key] ?? 0), 0);
+    return activeSeries.map((s) => {
+      const a =
+        s.key === "__TOTAL__"
+          ? sumActive(first)
+          : s.key === "__CAP__"
+            ? (capByYear.get(first.year) ?? 0)
             : (first.values[s.key] ?? 0);
-        const b =
-          s.key === "__TOTAL__"
-            ? GROUPS.reduce((acc, g) => acc + (last.values[g.key] ?? 0), 0)
+      const b =
+        s.key === "__TOTAL__"
+          ? sumActive(last)
+          : s.key === "__CAP__"
+            ? (capByYear.get(last.year) ?? 0)
             : (last.values[s.key] ?? 0);
-        const totalPct = a > 0 ? ((b - a) / a) * 100 : null;
-        const cagr = a > 0 && years > 0 ? (Math.pow(b / a, 1 / years) - 1) * 100 : null;
-        return { key: s.key, label: s.label, color: s.color, a, b, totalPct, cagr };
-      });
-  }, [filtered, activeSeries]);
+      const totalPct = a > 0 ? ((b - a) / a) * 100 : null;
+      const cagr = a > 0 && years > 0 ? (Math.pow(b / a, 1 / years) - 1) * 100 : null;
+      return { key: s.key, label: s.label, color: s.color, a, b, totalPct, cagr };
+    });
+  }, [filtered, activeSeries, capByYear]);
 
   const applyCsv = useCallback((csvText: string): string => {
     const res = parseCsv(csvText);
