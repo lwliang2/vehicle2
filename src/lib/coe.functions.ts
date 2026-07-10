@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { LIVE_COE_CSV_TEXT, LIVE_COE_UPDATED_AT } from "@/data/coe-live";
-import { parseCoeCsv } from "@/features/coe/csv";
+import { HISTORICAL_COE_CSV_TEXT } from "@/data/coe-historical";
+import { mergeRecords, parseCoeCsv } from "@/features/coe/csv";
 
 export interface CoeRecord {
   month: string;
@@ -21,6 +22,13 @@ interface DatastoreResponse {
 }
 
 const DEFAULT_RESOURCE_ID = "d_69b3380ad7e51aff3a7dcc84eba52b8a";
+
+// Parsed once — this file is static and doesn't change between requests.
+const { records: historicalRecords, errors: historicalErrors } =
+  parseCoeCsv(HISTORICAL_COE_CSV_TEXT);
+if (historicalErrors.length) {
+  console.error("HISTORICAL_COE_CSV_TEXT failed to parse:", historicalErrors);
+}
 
 function toNumber(value: string | number | undefined | null): number {
   if (value === undefined || value === null || value === "") return 0;
@@ -74,8 +82,8 @@ export const fetchCoeResults = createServerFn({ method: "GET" }).handler(
       const { records, errors } = parseCoeCsv(LIVE_COE_CSV_TEXT);
       if (records.length > 0) {
         return {
-          records,
-          source: "LTA Datamall — COE Bidding Results (monthly auto-sync)",
+          records: mergeRecords(historicalRecords, records),
+          source: "LTA Datamall — COE Bidding Results (monthly auto-sync + 1990-2009 historical)",
           fetchedAt: LIVE_COE_UPDATED_AT ?? new Date().toISOString(),
         };
       }
@@ -85,6 +93,10 @@ export const fetchCoeResults = createServerFn({ method: "GET" }).handler(
     // Fallback: live fetch from data.gov.sg — used before the first sync
     // run, or if the synced CSV fails to parse (e.g. LTA changed the format).
     const { records, source } = await fetchFromDataGovSg();
-    return { records, source, fetchedAt: new Date().toISOString() };
+    return {
+      records: mergeRecords(historicalRecords, records),
+      source: `${source} + 1990-2009 historical`,
+      fetchedAt: new Date().toISOString(),
+    };
   },
 );
