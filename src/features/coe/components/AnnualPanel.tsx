@@ -44,6 +44,9 @@ function pivotAnnual(
 
 export const AnnualPanel = memo(function AnnualPanel() {
   const [view, setView] = useState<AnnualView>("new");
+  const [enabledCats, setEnabledCats] = useState<Record<string, boolean>>(
+    Object.fromEntries(ANNUAL_CATS.map((c) => [c.key, true])),
+  );
 
   const fullData = useMemo(() => {
     if (view === "new") return pivotAnnual(annualNewRegistrations);
@@ -81,10 +84,15 @@ export const AnnualPanel = memo(function AnnualPanel() {
     [fullData, lo, hi],
   );
 
-  const cats =
+  const availableCats =
     view === "reval"
       ? ANNUAL_CATS.filter((c) => c.key !== "Taxis" && c.key !== "Vehicles Exempted From VQS")
       : ANNUAL_CATS;
+  const cats = availableCats.filter((c) => enabledCats[c.key]);
+
+  const toggleCat = (key: string) => setEnabledCats((prev) => ({ ...prev, [key]: !prev[key] }));
+  const setAllCats = (v: boolean) =>
+    setEnabledCats(Object.fromEntries(ANNUAL_CATS.map((c) => [c.key, v])));
 
   const yearsRange = data.length ? `${data[0].year}–${data[data.length - 1].year}` : "";
 
@@ -177,6 +185,47 @@ export const AnnualPanel = memo(function AnnualPanel() {
             Last {n}y
           </button>
         ))}
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Categories:</span>
+        <button
+          type="button"
+          onClick={() => setAllCats(true)}
+          className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground hover:border-muted-foreground"
+        >
+          All
+        </button>
+        <button
+          type="button"
+          onClick={() => setAllCats(false)}
+          className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground hover:border-muted-foreground"
+        >
+          None
+        </button>
+        {availableCats.map((c) => {
+          const on = enabledCats[c.key];
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => toggleCat(c.key)}
+              aria-pressed={on}
+              className={
+                "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors " +
+                (on
+                  ? "border-transparent text-foreground"
+                  : "border-border bg-card text-muted-foreground line-through opacity-60 hover:border-muted-foreground")
+              }
+              style={on ? { background: c.color + "22", borderColor: c.color } : undefined}
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: on ? c.color : "var(--muted-foreground)" }}
+              />
+              {c.key}
+            </button>
+          );
+        })}
       </div>
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
