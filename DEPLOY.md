@@ -19,6 +19,33 @@ https://aistudio.google.com/apikey. `COE_RESOURCE_ID`
 is optional (defaults to the live data.gov.sg COE resource) — set it the same
 way with `wrangler secret put COE_RESOURCE_ID` only if you need to override it.
 
+### "Check for updates" button (optional)
+
+The 🔄 **Check for updates** button in the nav bar triggers the monthly
+`sync-lta-data.yml` workflow on demand instead of waiting for its schedule.
+The Worker itself can't write to your repo or run the sync directly — this
+button calls GitHub's API to kick off the same GitHub Actions workflow you'd
+trigger manually from the Actions tab, which downloads, merges, commits, and
+(via your existing Workers Build integration) redeploys — usually within a
+few minutes.
+
+To enable it, set two secrets:
+
+```bash
+npx wrangler secret put GITHUB_TOKEN   # a GitHub token, see below
+npx wrangler secret put GITHUB_REPO    # e.g. "lwliang2/vehicle2"
+```
+
+For `GITHUB_TOKEN`, create a **fine-grained personal access token** at
+https://github.com/settings/personal-access-tokens/new scoped as narrowly as
+possible:
+- **Repository access**: only this repo
+- **Permissions**: Actions → **Read and write** (this is the only permission
+  it needs)
+
+Without these two secrets set, the button still shows up but returns a clear
+error when clicked rather than failing silently.
+
 ### Deploy
 
 ```bash
