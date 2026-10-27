@@ -11,7 +11,7 @@ export interface AnalyzeResult {
 }
 
 export const analyzeTrend = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown): AnalyzeInput => {
+  .validator((data: unknown): AnalyzeInput => {
     const d = data as AnalyzeInput;
     if (!d || typeof d.title !== "string" || !Array.isArray(d.series)) {
       throw new Error("Invalid analyze payload");
